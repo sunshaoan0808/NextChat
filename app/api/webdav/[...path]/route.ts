@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { STORAGE_KEY, internalAllowedWebDavEndpoints } from "../../../constant";
 import { getServerSideConfig } from "@/app/config/server";
+import { auth } from "@/app/api/auth";
+import { ModelProvider } from "@/app/constant";
 
 const config = getServerSideConfig();
 
@@ -23,6 +25,11 @@ async function handle(
 ) {
   if (req.method === "OPTIONS") {
     return NextResponse.json({ body: "OK" }, { status: 200 });
+  }
+
+  const authResult = auth(req, ModelProvider.GPT);
+  if (authResult.error) {
+    return NextResponse.json(authResult, { status: 401 });
   }
   const folder = STORAGE_KEY;
   const fileName = `${folder}/backup.json`;

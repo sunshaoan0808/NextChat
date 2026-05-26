@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/app/api/auth";
+import { ModelProvider } from "@/app/constant";
 
 async function handle(
   req: NextRequest,
@@ -9,6 +11,11 @@ async function handle(
 
   if (req.method === "OPTIONS") {
     return NextResponse.json({ body: "OK" }, { status: 200 });
+  }
+
+  const authResult = auth(req, ModelProvider.GPT);
+  if (authResult.error) {
+    return NextResponse.json(authResult, { status: 401 });
   }
   const [...key] = params.key;
   // only allow to request to *.upstash.io
@@ -55,7 +62,7 @@ async function handle(
     duplex: "half",
   };
 
-  console.log("[Upstash Proxy]", targetUrl, fetchOptions);
+  console.log("[Upstash Proxy]", targetUrl, { method });
   const fetchResult = await fetch(targetUrl, fetchOptions);
 
   console.log("[Any Proxy]", targetUrl, {

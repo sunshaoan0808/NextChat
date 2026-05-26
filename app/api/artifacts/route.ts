@@ -1,9 +1,16 @@
 import md5 from "spark-md5";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSideConfig } from "@/app/config/server";
+import { auth } from "@/app/api/auth";
+import { ModelProvider } from "@/app/constant";
 
 async function handle(req: NextRequest, res: NextResponse) {
   const serverConfig = getServerSideConfig();
+
+  const authResult = auth(req, ModelProvider.GPT);
+  if (authResult.error) {
+    return NextResponse.json(authResult, { status: 401 });
+  }
   const storeUrl = () =>
     `https://api.cloudflare.com/client/v4/accounts/${serverConfig.cloudflareAccountId}/storage/kv/namespaces/${serverConfig.cloudflareKVNamespaceId}`;
   const storeHeaders = () => ({
