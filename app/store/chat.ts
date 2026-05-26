@@ -203,7 +203,7 @@ function fillTemplateWith(input: string, modelConfig: ModelConfig) {
 }
 
 async function getMcpSystemPrompt(): Promise<string> {
-  const tools = await getAllTools();
+  const tools = await getAllTools(useAccessStore.getState().accessCode);
 
   let toolsStr = "";
 
@@ -834,7 +834,11 @@ export const useChatStore = createPersistStore(
             if (mcpRequest) {
               console.debug("[MCP Request]", mcpRequest);
 
-              executeMcpAction(mcpRequest.clientId, mcpRequest.mcp)
+              executeMcpAction(
+                mcpRequest.clientId,
+                mcpRequest.mcp,
+                useAccessStore.getState().accessCode,
+              )
                 .then((result) => {
                   console.log("[MCP Response]", result);
                   const mcpResponse =

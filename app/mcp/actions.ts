@@ -17,17 +17,29 @@ import {
 import fs from "fs/promises";
 import path from "path";
 import { getServerSideConfig } from "../config/server";
+import md5 from "spark-md5";
 
 const logger = new MCPClientLogger("MCP Actions");
 const CONFIG_PATH = path.join(process.cwd(), "app/mcp/mcp_config.json");
 
 const clientsMap = new Map<string, McpClientData>();
 
+function requireMcpAccess(accessCode?: string) {
+  const serverConfig = getServerSideConfig();
+  if (!serverConfig.needCode) return;
+
+  const hashedCode = md5.hash(accessCode ?? "").trim();
+  if (!serverConfig.codes.has(hashedCode)) {
+    throw new Error(!accessCode ? "empty access code" : "wrong access code");
+  }
+}
+
 // 获取客户端状态
-export async function getClientsStatus(): Promise<
-  Record<string, ServerStatusResponse>
-> {
-  const config = await getMcpConfigFromFile();
+export async function getClientsStatus(
+  accessCode?: string,
+): Promise<Record<string, ServerStatusResponse>> {
+  requireMcpAccess(accessCode);
+  const config = await readMcpConfigFromFile();
   const result: Record<string, ServerStatusResponse> = {};
 
   for (const clientId of Object.keys(config.mcpServers)) {
@@ -75,19 +87,22 @@ export async function getClientsStatus(): Promise<
 }
 
 // 获取客户端工具
-export async function getClientTools(clientId: string) {
+export async function getClientTools(clientId: string, accessCode?: string) {
+  requireMcpAccess(accessCode);
   return clientsMap.get(clientId)?.tools ?? null;
 }
 
 // 获取可用客户端数量
-export async function getAvailableClientsCount() {
+export async function getAvailableClientsCount(accessCode?: string) {
+  requireMcpAccess(accessCode);
   let count = 0;
   clientsMap.forEach((map) => !map.errorMsg && count++);
   return count;
 }
 
 // 获取所有客户端工具
-export async function getAllTools() {
+export async function getAllTools(accessCode?: string) {
+  requireMcpAccess(accessCode);
   const result = [];
   for (const [clientId, status] of clientsMap.entries()) {
     result.push({
@@ -139,7 +154,8 @@ async function initializeSingleClient(
 }
 
 // 初始化系统
-export async function initializeMcpSystem() {
+export async function initializeMcpSystem(accessCode?: string) {
+  requireMcpAccess(accessCode);
   logger.info("MCP Actions starting...");
   try {
     // 检查是否已有活跃的客户端
@@ -148,7 +164,7 @@ export async function initializeMcpSystem() {
       return;
     }
 
-    const config = await getMcpConfigFromFile();
+    const config = await readMcpConfigFromFile();
     // 初始化所有客户端
     for (const [clientId, serverConfig] of Object.entries(config.mcpServers)) {
       await initializeSingleClient(clientId, serverConfig);
@@ -161,9 +177,14 @@ export async function initializeMcpSystem() {
 }
 
 // 添加服务器
-export async function addMcpServer(clientId: string, config: ServerConfig) {
+export async function addMcpServer(
+  clientId: string,
+  config: ServerConfig,
+  accessCode?: string,
+) {
+  requireMcpAccess(accessCode);
   try {
-    const currentConfig = await getMcpConfigFromFile();
+    const currentConfig = await readMcpConfigFromFile();
     const isNewServer = !(clientId in currentConfig.mcpServers);
 
     // 如果是新服务器，设置默认状态为 active
@@ -193,9 +214,10 @@ export async function addMcpServer(clientId: string, config: ServerConfig) {
 }
 
 // 暂停服务器
-export async function pauseMcpServer(clientId: string) {
+export async function pauseMcpServer(clientId: string, accessCode?: string) {
+  requireMcpAccess(accessCode);
   try {
-    const currentConfig = await getMcpConfigFromFile();
+    const currentConfig = await readMcpConfigFromFile();
     const serverConfig = currentConfig.mcpServers[clientId];
     if (!serverConfig) {
       throw new Error(`Server ${clientId} not found`);
@@ -229,9 +251,13 @@ export async function pauseMcpServer(clientId: string) {
 }
 
 // 恢复服务器
-export async function resumeMcpServer(clientId: string): Promise<void> {
+export async function resumeMcpServer(
+  clientId: string,
+  accessCode?: string,
+): Promise<void> {
+  requireMcpAccess(accessCode);
   try {
-    const currentConfig = await getMcpConfigFromFile();
+    const currentConfig = await readMcpConfigFromFile();
     const serverConfig = currentConfig.mcpServers[clientId];
     if (!serverConfig) {
       throw new Error(`Server ${clientId} not found`);
@@ -258,7 +284,7 @@ export async function resumeMcpServer(clientId: string): Promise<void> {
       };
       await updateMcpConfig(newConfig);
     } catch (error) {
-      const currentConfig = await getMcpConfigFromFile();
+      const currentConfig = await readMcpConfigFromFile();
       const serverConfig = currentConfig.mcpServers[clientId];
 
       // 如果配置中存在该服务器，则更新其状态为 error
@@ -283,9 +309,10 @@ export async function resumeMcpServer(clientId: string): Promise<void> {
 }
 
 // 移除服务器
-export async function removeMcpServer(clientId: string) {
+export async function removeMcpServer(clientId: string, accessCode?: string) {
+  requireMcpAccess(accessCode);
   try {
-    const currentConfig = await getMcpConfigFromFile();
+    const currentConfig = await readMcpConfigFromFile();
     const { [clientId]: _, ...rest } = currentConfig.mcpServers;
     const newConfig = {
       ...currentConfig,
@@ -308,7 +335,8 @@ export async function removeMcpServer(clientId: string) {
 }
 
 // 重启所有客户端
-export async function restartAllClients() {
+export async function restartAllClients(accessCode?: string) {
+  requireMcpAccess(accessCode);
   logger.info("Restarting all clients...");
   try {
     // 关闭所有客户端
@@ -322,7 +350,7 @@ export async function restartAllClients() {
     clientsMap.clear();
 
     // 重新初始化
-    const config = await getMcpConfigFromFile();
+    const config = await readMcpConfigFromFile();
     for (const [clientId, serverConfig] of Object.entries(config.mcpServers)) {
       await initializeSingleClient(clientId, serverConfig);
     }
@@ -337,7 +365,9 @@ export async function restartAllClients() {
 export async function executeMcpAction(
   clientId: string,
   request: McpRequestMessage,
+  accessCode?: string,
 ) {
+  requireMcpAccess(accessCode);
   try {
     const client = clientsMap.get(clientId);
     if (!client?.client) {
@@ -352,7 +382,7 @@ export async function executeMcpAction(
 }
 
 // 获取 MCP 配置文件
-export async function getMcpConfigFromFile(): Promise<McpConfigData> {
+async function readMcpConfigFromFile(): Promise<McpConfigData> {
   try {
     const configStr = await fs.readFile(CONFIG_PATH, "utf-8");
     return JSON.parse(configStr);
@@ -363,6 +393,14 @@ export async function getMcpConfigFromFile(): Promise<McpConfigData> {
 }
 
 // 更新 MCP 配置文件
+
+export async function getMcpConfigFromFile(
+  accessCode?: string,
+): Promise<McpConfigData> {
+  requireMcpAccess(accessCode);
+  return readMcpConfigFromFile();
+}
+
 async function updateMcpConfig(config: McpConfigData): Promise<void> {
   try {
     // 确保目录存在
